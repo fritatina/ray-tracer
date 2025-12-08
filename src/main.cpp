@@ -406,6 +406,14 @@ interval Interval(f32 min, f32 max)
     return(result);
 }
 
+interval Interval(interval i1, interval i2)
+{
+    interval result;
+    result.min = Minimum(i1.min, i2.min);
+    result.max = Maximum(i1.max, i2.max);
+    return(result);
+}
+
 inline f32 Clamp(interval t, f32 x)
 {
     if(x < t.min)
@@ -419,9 +427,117 @@ inline f32 Clamp(interval t, f32 x)
     return(x);
 }
 
+inline interval Expand(interval t, f32 delta)
+{
+    f32 padding = (delta / 2.0f);
+    interval result = Interval(t.min - padding, t.max + padding);
+    return(result);
+}
+
 interval INTERVAL_EMPTY = Interval(FLOAT_INFINITY, FLOAT_MINUS_INFINITY);
 interval INTERVAL_UNIVERSE = Interval(FLOAT_MINUS_INFINITY, FLOAT_INFINITY); 
 interval INTERVAL_INTENSITY = Interval(0.0f, 0.999f);
+
+struct axis_aligned_bounding_box
+{
+    interval x;
+    interval y;
+    interval z;
+
+    inline interval GetInterval(s32 i)
+    {
+        if(i == 0)
+        { 
+            return(x);
+        }
+        else if(i == 1)
+        {
+            return(y);
+        }
+        else
+        {
+            return(z);
+        }
+        
+    }
+};
+
+axis_aligned_bounding_box AxisAlignedBoundingBox()
+{
+    axis_aligned_bounding_box result;
+    result.x = INTERVAL_EMPTY;
+    result.y = INTERVAL_EMPTY;
+    result.z = INTERVAL_EMPTY;
+    return(result);
+}
+
+axis_aligned_bounding_box AxisAlignedBoundingBox(interval x, interval y, interval z)
+{
+    axis_aligned_bounding_box result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return(result);
+}
+
+axis_aligned_bounding_box AxisAlignedBoundingBox(vec3 a, vec3 b)
+{
+    axis_aligned_bounding_box result;
+    result.x = (a.x <= b.x) ? Interval(a.x, b.x) : Interval(b.x, a.x);
+    result.y = (a.y <= b.y) ? Interval(a.y, b.y) : Interval(b.y, a.y);
+    result.z = (a.z <= b.z) ? Interval(a.z, b.z) : Interval(b.z, a.z);
+    return(result); 
+}
+
+axis_aligned_bounding_box AxisAlignedBoundingBox(axis_aligned_bounding_box box1, axis_aligned_bounding_box box2)
+{
+    axis_aligned_bounding_box result;
+    result.x = Interval(box1.x, box2.x);
+    result.y = Interval(box1.y, box2.y);
+    result.z = Interval(box1.z, box2.z);
+    return(result);
+}
+
+b32 HitAABB(axis_aligned_bounding_box aabb, ray3 ray, interval ray_interval)
+{
+    vec3 origin = ray.origin;
+    vec3 direction = ray.direction;
+    for(s32 axis = 0; axis <= 2; axis++)
+    {
+        interval axis_interval = aabb.GetInterval(axis);
+        f32 inverted_axis_direction = 1.0f / direction[axis];
+        f32 t0 = (axis_interval.min - origin[axis]) * inverted_axis_direction;
+        f32 t1 = (axis_interval.max - origin[axis]) * inverted_axis_direction;
+        if(t0 < t1)
+        {
+            if(t0 > ray_interval.min)
+            {
+                ray_interval.min = t0;
+            }
+            if(t1 < ray_interval.max)
+            {
+                ray_interval.max = t1;
+            }
+        }
+        else
+        {
+            if(t1 > ray_interval.min)
+            {
+                ray_interval.min = t1;
+            }
+            if(t0 < ray_interval.max)
+            {
+                ray_interval.max = t0;
+            }
+        }
+
+        if(ray_interval.max <= ray_interval.min)
+        {
+            return(0);
+        }
+    }
+    return(1);
+}
 
 struct hittable_sphere
 {
@@ -441,15 +557,6 @@ hittable_sphere HittableSphere(vec3 center1, vec3 center2, f32 radius, material 
     return(result);
 }
 
-hittable_sphere HittableSphere(vec3 center, f32 radius, material mat)
-{
-    hittable_sphere result;
-    result.center = Ray3(center, Vec3(0.0f));
-    result.radius = radius;
-    result.mat = mat;
-    return(result);
-}
-
 hittable_sphere HittableSphere(ray3 center, f32 radius, material mat)
 {
     hittable_sphere result;
@@ -457,6 +564,11 @@ hittable_sphere HittableSphere(ray3 center, f32 radius, material mat)
     result.radius = radius;
     result.mat = mat;
     return(result);
+}
+
+hittable_sphere HittableSphere(vec3 center, f32 radius, material mat)
+{
+    return(HittableSphere(Ray3(center, Vec3(0.0f)), radius, mat));
 }
 
 hittable_sphere HittableSphere(ray3 center, f32 radius)
@@ -525,6 +637,11 @@ inline f32 RandomFloat()
 inline f32 RandomFloat(f32 min, f32 max)
 {
     f32 result = min + (max - min) * RandomFloat();
+    return(result);
+}
+inline s32 RandomInt(s32 min, s32 max)
+{
+    s32 result = int(RandomFloat((f32)min, ((f32)max)+ 1.0f));
     return(result);
 }
 
@@ -692,13 +809,6 @@ f32 LinearToGamma(f32 linear_component)
     }
     return(0.0f);
 }
-void WritePixel(std::ostream &out, vec3 color)
-{
-    b8 r = (b8)(Clamp(INTERVAL_INTENSITY, LinearToGamma(color.x)) * 255);
-    b8 g = (b8)(Clamp(INTERVAL_INTENSITY, LinearToGamma(color.y)) * 255);
-    b8 b = (b8)(Clamp(INTERVAL_INTENSITY, LinearToGamma(color.z)) * 255);
-    out << r << g << b;
-}
 
 struct camera_frame_basis
 {
@@ -706,24 +816,6 @@ struct camera_frame_basis
     vec3 v;
     vec3 w;
 };
-
-inline ray3 GetRandomRayAtPosition(s32 x, s32 y, vec3 camera_center, vec3 upper_left_pixel_location, vec3 pixel_delta_horizontal, vec3 pixel_delta_vertical, vec3 defocus_disk_u, vec3 defocus_disk_v, f32 defocus_angle)
-{
-    vec3 sample_square = Vec3(RandomFloat() - 0.5f, RandomFloat() - 0.5f, 0.0f);
-    f32 offset_x = (x + sample_square.x);
-    f32 offset_y = (y + sample_square.y);
-    vec3 pixel_sample = upper_left_pixel_location + (offset_x * pixel_delta_horizontal) + (offset_y * pixel_delta_vertical);
-
-    vec3 ray_origin = camera_center;
-    if(defocus_angle > 0)
-    {
-        vec3 point = RandomVectorOnUnitDisk();
-        ray_origin = camera_center + (defocus_disk_u * point.u) + (defocus_disk_v * point.v);
-    }
-    f32 ray_time = RandomFloat();
-    ray3 ray = Ray3(ray_origin, Normalize(pixel_sample - ray_origin), ray_time);
-    return(ray);
-}
 
 void AddBookOneScene(std::vector<hittable_sphere> &sphere_list)
 {
@@ -770,7 +862,7 @@ int main(void)
     std::ofstream output(output_path, std::ios::binary);    
 
     f32 aspect_ratio = (16.0f / 9.0f);
-    s32 image_height = 256;
+    s32 image_height = 360;
     s32 image_width = (s32)(image_height * aspect_ratio);
 
     // TODO: Customizable camera settings, separate camera viewport calculations
@@ -801,7 +893,7 @@ int main(void)
     vec3 defocus_disk_u = camera_frame.u * defocus_radius;
     vec3 defocus_disk_v = camera_frame.v * defocus_radius;
 
-    s32 samples_per_pixel = 8;
+    s32 samples_per_pixel = 32;
     f32 pixel_samples_scale = 1.0f / ((f32)samples_per_pixel);
 
     s32 max_ray_recursion_depth = 32;
@@ -819,7 +911,7 @@ int main(void)
     material dielectric_mat = Material(Vec3(1.0f, 1.0f, 1.0f), MaterialType_Dielectric, 1.0f, 1.5f);
     sphere_list.push_back(HittableSphere(Vec3(0.0f, 1.0f, 0.0f), 1.0f, dielectric_mat));
 
-    AddBookOneScene(sphere_list);
+    //AddBookOneScene(sphere_list);
 
     output << "P6\n";
     output << std::to_string(image_width) << " " << std::to_string(image_height) << "\n";
@@ -831,12 +923,27 @@ int main(void)
             vec3 pixel_color = COLOR_BLACK;
             for(s32 sample = 0; sample < samples_per_pixel; sample++)
             {
-                ray3 ray = GetRandomRayAtPosition(x, y, camera_center, upper_left_pixel_location, pixel_delta_horizontal, pixel_delta_vertical, defocus_disk_u, defocus_disk_v, defocus_angle);
+                vec3 sample_square = Vec3(RandomFloat() - 0.5f, RandomFloat() - 0.5f, 0.0f);
+                f32 offset_x = (x + sample_square.x);
+                f32 offset_y = (y + sample_square.y);
+                vec3 pixel_sample = upper_left_pixel_location + (offset_x * pixel_delta_horizontal) + (offset_y * pixel_delta_vertical);
+                vec3 ray_origin = camera_center;
+                if(defocus_angle > 0)
+                {
+                    vec3 point = RandomVectorOnUnitDisk();
+                    ray_origin = camera_center + (defocus_disk_u * point.u) + (defocus_disk_v * point.v);
+                }
+                f32 ray_time = RandomFloat();
+                ray3 ray = Ray3(ray_origin, Normalize(pixel_sample - ray_origin), ray_time);
                 pixel_color = pixel_color + GetRayColor(ray, sphere_list, max_ray_recursion_depth);
             }
             pixel_color = pixel_color * pixel_samples_scale;
-            WritePixel(output, pixel_color);
+            b8 r = (b8)(Clamp(INTERVAL_INTENSITY, LinearToGamma(pixel_color.x)) * 255);
+            b8 g = (b8)(Clamp(INTERVAL_INTENSITY, LinearToGamma(pixel_color.y)) * 255);
+            b8 b = (b8)(Clamp(INTERVAL_INTENSITY, LinearToGamma(pixel_color.z)) * 255);
+            output << r << g << b;
         }
+        if(((y+1) % 10) == 0) std::cout << "scanlines: " << std::to_string(y + 1) << "/" << std::to_string(image_height) << "\n"; 
     }
 
     output.close();
