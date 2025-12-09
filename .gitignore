@@ -1,1 +1,4 @@
 bin/
+assets/
+
+src/stb_image.h

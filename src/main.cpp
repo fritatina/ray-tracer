@@ -3,12 +3,12 @@
 #include "string"
 #include "vector"
 
-typedef unsigned char b8;
 typedef unsigned int b32;
 typedef signed long long s64;
 typedef unsigned long long u64;
 typedef signed int s32;
 typedef unsigned int u32;
+typedef unsigned char u8;
 typedef float f32;
 
 // TODO: Intrinsics for math primitives
@@ -22,6 +22,21 @@ inline f32 SquareRoot(f32 value)
 inline f32 Tangent(f32 value)
 {
     f32 result = tanf(value);
+    return(result);
+}
+inline f32 Arctangent2(f32 a, f32 b)
+{
+    f32 result = atan2(a, b);
+    return(result);
+}
+inline f32 Arccosine(f32 a)
+{
+    f32 result = acosf(a);
+    return(result);
+}
+inline s32 Floor(f32 value)
+{
+    s32 result = (s32)floorf(value);
     return(result);
 }
 #define FLOAT_INFINITY FLT_MAX
@@ -161,6 +176,8 @@ vec3 COLOR_BLACK = Vec3(0.0f);
 vec3 COLOR_WHITE = Vec3(1.0f);
 vec3 COLOR_LIGHT_BLUE = Vec3(0.5f, 0.7f, 1.0f);
 vec3 COLOR_RED = Vec3(1.0f, 0.0f, 0.0f);
+vec3 COLOR_MAGENTA = Vec3(1.0f, 0.0f, 1.0f);
+vec3 COLOR_CYAN = Vec3(0.0f, 1.0f, 1.0f);
 
 inline vec3 operator*(vec3 v, f32 f)
 {
@@ -308,64 +325,6 @@ ray3 Ray3(vec3 origin, vec3 direction, f32 time)
     return(result);
 }
 
-enum material_type
-{
-    MaterialType_Lambertian = 0,
-    MaterialType_Metal = 1,
-    MaterialType_Dielectric = 2,
-};
-
-struct material
-{
-    vec3 albedo;
-    material_type type;
-    f32 fuzziness;
-    f32 refraction_index;
-};
-
-material Material(vec3 albedo, material_type type, f32 fuzziness = 1.0f, f32 refraction_index = 1.0f)
-{
-    material result;
-    result.albedo = albedo;
-    result.type = type;
-    result.fuzziness = fuzziness;
-    result.refraction_index = refraction_index;
-    return(result);
-}
-
-struct hit_record
-{
-    vec3 point;
-    vec3 normal;
-    f32 t;
-    b32 front_face;
-    material mat;
-    
-    void SetFaceNormal(ray3 ray, vec3 outward_normal)
-    {
-        // TODO: We're always normalizing inside the function, 
-        // although we could also assume the input vector to already be normalized
-        f32 test = DotProduct(Normalize(ray.direction), Normalize(outward_normal));
-        if(test < 0)
-        {
-            front_face = 1;
-        }
-        else
-        {
-            front_face = 0;
-        }
-
-        if(front_face)
-        {
-            normal = outward_normal; 
-        }
-        else
-        {
-            normal = -outward_normal;
-        }
-    }
-};
-
 struct interval
 {
     f32 min;
@@ -414,7 +373,7 @@ interval Interval(interval i1, interval i2)
     return(result);
 }
 
-inline f32 Clamp(interval t, f32 x)
+inline f32 Clamp(f32 x, interval t)
 {
     if(x < t.min)
     {
@@ -427,6 +386,12 @@ inline f32 Clamp(interval t, f32 x)
     return(x);
 }
 
+inline f32 Clamp(f32 x, f32 min, f32 max)
+{
+    interval t = Interval(min, max);
+    return(Clamp(x, t));
+}
+
 inline interval Expand(interval t, f32 delta)
 {
     f32 padding = (delta / 2.0f);
@@ -437,6 +402,217 @@ inline interval Expand(interval t, f32 delta)
 interval INTERVAL_EMPTY = Interval(FLOAT_INFINITY, FLOAT_MINUS_INFINITY);
 interval INTERVAL_UNIVERSE = Interval(FLOAT_MINUS_INFINITY, FLOAT_INFINITY); 
 interval INTERVAL_INTENSITY = Interval(0.0f, 0.999f);
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+struct image_data
+{
+    s32 bytes_per_pixel;
+    s32 bytes_per_scanline;
+    s32 width;
+    s32 height;
+    u8 *data;
+};
+b32 LoadImage(image_data *img, std::string filename)
+{
+    s32 bytes_per_pixel = 3;
+    img->data = stbi_load(filename.c_str(), &img->width, &img->height, &img->bytes_per_pixel, bytes_per_pixel);
+    if(img->data)
+    {
+        img->bytes_per_scanline = img->width * img->bytes_per_pixel;
+        return(1);
+    }
+    else
+    {
+        img->data = nullptr;
+        return(0);
+    }
+}
+
+vec3 GetImagePixel(image_data img, s32 x, s32 y)
+{
+    if(img.data)
+    {
+        x = Clamp(x, 0, img.width);
+        y = Clamp(y, 0, img.height);
+        u8 *pixel = img.data + (y * img.bytes_per_scanline) + (x * img.bytes_per_pixel);
+        f32 byte_to_float  = 1.0f / 255.0f;
+        vec3 pixel_color = Vec3(pixel[0] * byte_to_float, pixel[1] * byte_to_float, pixel[2] * byte_to_float);
+        return(pixel_color);
+    }
+    else
+    {
+        return(COLOR_MAGENTA);
+    }
+}
+
+enum texture_type
+{
+    TextureType_SolidColor = 0,
+    TextureType_Checker = 1,
+    TextureType_Image = 2,
+};
+
+struct texture
+{
+    texture_type type;
+    vec3 albedo;
+
+    vec3 even_albedo;
+    vec3 odd_albedo;
+    f32 scale;
+
+    image_data img;
+};
+
+texture Texture(texture_type type, vec3 albedo)
+{
+    texture tex;
+    tex.type;
+    tex.albedo = albedo;
+    return(tex);
+}
+
+texture CheckerTexture(vec3 even, vec3 odd, f32 scale)
+{
+    texture checker_texture;
+    checker_texture.type = TextureType_Checker;
+    checker_texture.albedo = COLOR_BLACK;
+    checker_texture.even_albedo = even;
+    checker_texture.odd_albedo = odd;   
+    checker_texture.scale = scale;
+    return(checker_texture);
+}
+
+texture ImageTexture(image_data img)
+{
+    texture image_texture;
+    image_texture.type = TextureType_Image;
+    image_texture.img = img;
+    return(image_texture);
+}
+
+texture ImageTexture(std::string filename)
+{
+    image_data img;
+    LoadImage(&img, filename);
+    return(ImageTexture(img));
+}
+
+vec3 SampleTexture(texture tex, vec2 texture_coordinates, vec3 point)
+{
+    switch(tex.type)
+    {
+        case(TextureType_SolidColor):
+        {
+            return(tex.albedo);
+        } break;
+        case(TextureType_Checker):
+        {
+            f32 inv_scale = 1.0f / tex.scale;
+            s32 x = (s32)(Floor(inv_scale * point.x));
+            s32 y = (s32)(Floor(inv_scale * point.y));
+            s32 z = (s32)(Floor(inv_scale * point.z));
+            b32 is_even = ((x + y + z) % 2) == 0;
+            if(is_even)
+            {
+                return(tex.even_albedo);
+            }
+            else
+            {
+                return(tex.odd_albedo);
+            }
+        } break;
+        case(TextureType_Image):
+        {
+            if(tex.img.height <= 0)
+            {
+                return(COLOR_CYAN);
+            }
+            f32 u = Clamp(texture_coordinates.u, Interval(0.0f, 1.0f));
+            f32 v = 1.0f - Clamp(texture_coordinates.v, Interval(0.0f, 1.0f));
+            
+            s32 x = (s32)(u * tex.img.width);
+            s32 y = (s32)(v * tex.img.height);
+            return(GetImagePixel(tex.img, x, y));
+        } break;
+    };
+    return(Vec3(0.0f, 0.8f, 0.8f)); 
+}
+
+enum material_type
+{
+    MaterialType_Lambertian = 0,
+    MaterialType_Metal = 1,
+    MaterialType_Dielectric = 2,
+};
+
+struct material
+{
+    vec3 albedo;
+    material_type type;
+    f32 fuzziness;
+    f32 refraction_index;
+    texture tex;
+    b32 has_texture;
+};
+
+material Material(vec3 albedo, material_type type, f32 fuzziness = 1.0f, f32 refraction_index = 1.0f)
+{
+    material result;
+    result.albedo = albedo;
+    result.type = type;
+    result.fuzziness = fuzziness;
+    result.refraction_index = refraction_index;
+    result.has_texture = 0;
+    return(result);
+}
+
+material Material(texture tex, material_type type, f32 fuzziness = 1.0f, f32 refraction_index = 1.0f)
+{
+    material result;
+    result.albedo = tex.albedo;
+    result.type = type;
+    result.fuzziness = fuzziness;
+    result.refraction_index = refraction_index;
+    result.has_texture = 1;
+    result.tex = tex;
+    return(result);
+}
+
+struct hit_record
+{
+    vec3 point;
+    vec3 normal;
+    f32 t;
+    b32 front_face;
+    material mat;
+    vec2 texture_coordinates;
+    
+    void SetFaceNormal(ray3 ray, vec3 outward_normal)
+    {
+        // TODO: We're always normalizing inside the function, 
+        // although we could also assume the input vector to already be normalized
+        f32 test = DotProduct(Normalize(ray.direction), Normalize(outward_normal));
+        if(test < 0)
+        {
+            front_face = 1;
+        }
+        else
+        {
+            front_face = 0;
+        }
+
+        if(front_face)
+        {
+            normal = outward_normal; 
+        }
+        else
+        {
+            normal = -outward_normal;
+        }
+    }
+};
 
 struct axis_aligned_bounding_box
 {
@@ -581,6 +757,16 @@ hittable_sphere HittableSphere(vec3 center, f32 radius)
     return(HittableSphere(center, radius, GRAY_MATTE_MATERIAL));
 }
 
+vec2 GetHittableSphereUVCoordinates(hittable_sphere sphere, vec3 point)
+{
+    f32 theta = Arccosine(-point.y);
+    f32 phi = Arctangent2(-point.z, point.x) + PI32;
+    vec2 result;
+    result.u = phi / (2 * PI32);
+    result.v = theta / PI32;
+    return(result);
+}
+
 b32 HitSphere(hit_record *record, interval ray_interval, ray3 ray, hittable_sphere sphere)
 {
     vec3 current_center = sphere.center.GetPositionAt(ray.time);
@@ -608,6 +794,7 @@ b32 HitSphere(hit_record *record, interval ray_interval, ray3 ray, hittable_sphe
     record->point = ray.GetPositionAt(root);
     vec3 outward_normal = (record->point - current_center) / sphere.radius;
     record->SetFaceNormal(ray, outward_normal);
+    record->texture_coordinates = GetHittableSphereUVCoordinates(sphere, outward_normal);
     record->mat = sphere.mat;
     return(1);
 }
@@ -734,7 +921,14 @@ b32 Scatter(hit_record *record, ray3 incoming_ray, ray3 *scattered_ray, vec3 *at
                 scatter_direction = record->normal;
             }
             (*scattered_ray) = Ray3(record->point, scatter_direction, incoming_ray.time);
-            (*attenuation_color) = record->mat.albedo;
+            if(record->mat.has_texture)
+            {
+                (*attenuation_color) = SampleTexture(record->mat.tex, record->texture_coordinates, record->point);
+            }
+            else
+            {
+                (*attenuation_color) = record->mat.albedo;
+            }
             return(1);
         } break;
         case(MaterialType_Metal):
@@ -861,16 +1055,16 @@ int main(void)
     std::string output_path = "bin/out.ppm";
     std::ofstream output(output_path, std::ios::binary);    
 
-    f32 aspect_ratio = (16.0f / 9.0f);
+    f32 aspect_ratio = (4.0f / 3.0f);
     s32 image_height = 360;
     s32 image_width = (s32)(image_height * aspect_ratio);
 
     // TODO: Customizable camera settings, separate camera viewport calculations
-    vec3 camera_center =  Vec3(13.0f, 2.0f, 3.0f);
+    vec3 camera_center =  Vec3(0.0f, 0.0f, 12.0f);
     vec3 camera_look_at = Vec3(0.0f, 0.0f, 0.0f);
     f32 vertical_fov = DEGREES_TO_RADIANS(20.0f);
     f32 focus_distance = 10.0f;
-    f32 defocus_angle = 0.6f;
+    f32 defocus_angle = 0.0f;
 
     vec3 camera_up = Vec3(0.0f, 1.0f, 0.0f);
     camera_frame_basis camera_frame;
@@ -893,13 +1087,15 @@ int main(void)
     vec3 defocus_disk_u = camera_frame.u * defocus_radius;
     vec3 defocus_disk_v = camera_frame.v * defocus_radius;
 
-    s32 samples_per_pixel = 32;
+    s32 samples_per_pixel = 8;
     f32 pixel_samples_scale = 1.0f / ((f32)samples_per_pixel);
 
     s32 max_ray_recursion_depth = 32;
 
     std::vector<hittable_sphere> sphere_list;
-    material gray_ground_mat = Material(Vec3(0.5f, 0.5f, 0.5f), MaterialType_Lambertian);
+    /*
+    texture tex = CheckerTexture(COLOR_BLACK, COLOR_WHITE, 0.32f);
+    material gray_ground_mat = Material(tex, MaterialType_Lambertian);
     sphere_list.push_back(HittableSphere(Vec3(0.0f, -1000.0f, -1.0f), 1000.0f, gray_ground_mat));
 
     material lambertian_mat = Material(Vec3(0.4f, 0.2f, 0.1f), MaterialType_Lambertian);
@@ -910,9 +1106,12 @@ int main(void)
 
     material dielectric_mat = Material(Vec3(1.0f, 1.0f, 1.0f), MaterialType_Dielectric, 1.0f, 1.5f);
     sphere_list.push_back(HittableSphere(Vec3(0.0f, 1.0f, 0.0f), 1.0f, dielectric_mat));
-
+    */
     //AddBookOneScene(sphere_list);
-
+    texture earth_texture = ImageTexture("assets/earthmap.jpg");
+    material earth_material = Material(earth_texture, MaterialType_Lambertian);
+    sphere_list.push_back(HittableSphere(Vec3(0.0f, 0.0f, 0.0f), 2.0f, earth_material));
+ 
     output << "P6\n";
     output << std::to_string(image_width) << " " << std::to_string(image_height) << "\n";
     output << "255\n";
@@ -938,9 +1137,9 @@ int main(void)
                 pixel_color = pixel_color + GetRayColor(ray, sphere_list, max_ray_recursion_depth);
             }
             pixel_color = pixel_color * pixel_samples_scale;
-            b8 r = (b8)(Clamp(INTERVAL_INTENSITY, LinearToGamma(pixel_color.x)) * 255);
-            b8 g = (b8)(Clamp(INTERVAL_INTENSITY, LinearToGamma(pixel_color.y)) * 255);
-            b8 b = (b8)(Clamp(INTERVAL_INTENSITY, LinearToGamma(pixel_color.z)) * 255);
+            u8 r = (u8)(Clamp(LinearToGamma(pixel_color.x), INTERVAL_INTENSITY) * 255);
+            u8 g = (u8)(Clamp(LinearToGamma(pixel_color.y), INTERVAL_INTENSITY) * 255);
+            u8 b = (u8)(Clamp(LinearToGamma(pixel_color.z), INTERVAL_INTENSITY) * 255);
             output << r << g << b;
         }
         if(((y+1) % 10) == 0) std::cout << "scanlines: " << std::to_string(y + 1) << "/" << std::to_string(image_height) << "\n"; 
