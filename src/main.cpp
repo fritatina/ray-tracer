@@ -402,6 +402,7 @@ inline interval Expand(interval t, f32 delta)
 interval INTERVAL_EMPTY = Interval(FLOAT_INFINITY, FLOAT_MINUS_INFINITY);
 interval INTERVAL_UNIVERSE = Interval(FLOAT_MINUS_INFINITY, FLOAT_INFINITY); 
 interval INTERVAL_INTENSITY = Interval(0.0f, 0.999f);
+interval INTERVAL_UNIT = Interval(0, 1);
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -443,6 +444,79 @@ vec3 GetImagePixel(image_data img, s32 x, s32 y)
     else
     {
         return(COLOR_MAGENTA);
+    }
+}
+
+// TODO: RNG
+#include "cstdlib"
+inline f32 RandomFloat()
+{
+    f32 result = (f32)(std::rand()) / (RAND_MAX + 1.0f);
+    return(result);
+}
+inline f32 RandomFloat(f32 min, f32 max)
+{
+    f32 result = min + (max - min) * RandomFloat();
+    return(result);
+}
+inline s32 RandomInt(s32 min, s32 max)
+{
+    s32 result = int(RandomFloat((f32)min, (f32)(max + 1)));
+    return(result);
+}
+
+vec3 Lerp(vec3 A, vec3 B, f32 alpha)
+{
+    vec3 result = ((1.0f - alpha) * A) + (alpha * B);
+    return(result);
+}
+
+vec3 RandomVec3()
+{
+    vec3 result = Vec3(RandomFloat(), RandomFloat(), RandomFloat());
+    return(result);
+}
+vec3 RandomVec3(f32 min, f32 max)
+{
+    vec3 result = Vec3(RandomFloat(min, max), RandomFloat(min, max), RandomFloat(min, max));
+    return(result);
+}
+vec3 RandomUnitVec3()
+{
+    while(true)
+    {
+        vec3 point = RandomVec3(-1.0f, 1.0f);
+        f32 length_squared = LengthSquared(point);
+        // Reject vectors that are outside the unit sphere,
+        // but also reject ones that are too close to the center 
+        // and can cause floating-point issues
+        if((length_squared <= 1.0f) && (length_squared > 1e-18))
+        {
+            return(point / (SquareRoot(length_squared)));
+        }
+    }
+}
+vec3 RandomVectorOnUnitDisk()
+{
+    while(true)
+    {
+        vec3 point = Vec3(RandomFloat(-1.0f, 1.0f), RandomFloat(-1.0f, 1.0f), 0.0f);
+        if(LengthSquared(point) < 1.0f)
+        {
+            return(point);
+        }
+    }
+}
+vec3 RandomVectorOnHemisphere(vec3 normal)
+{
+    vec3 unit_sphere_vector = RandomUnitVec3();
+    if(DotProduct(unit_sphere_vector, normal) > 0.0f)
+    {
+        return(unit_sphere_vector);
+    }
+    else
+    {
+        return(-unit_sphere_vector);
     }
 }
 
@@ -537,7 +611,7 @@ vec3 SampleTexture(texture tex, vec2 texture_coordinates, vec3 point)
             return(GetImagePixel(tex.img, x, y));
         } break;
     };
-    return(Vec3(0.0f, 0.8f, 0.8f)); 
+    return(COLOR_CYAN);
 }
 
 enum material_type
@@ -545,6 +619,7 @@ enum material_type
     MaterialType_Lambertian = 0,
     MaterialType_Metal = 1,
     MaterialType_Dielectric = 2,
+    MaterialType_DiffuseLight = 3,
 };
 
 struct material
@@ -555,6 +630,7 @@ struct material
     f32 refraction_index;
     texture tex;
     b32 has_texture;
+    vec3 emitted_color;
 };
 
 material Material(vec3 albedo, material_type type, f32 fuzziness = 1.0f, f32 refraction_index = 1.0f)
@@ -565,6 +641,7 @@ material Material(vec3 albedo, material_type type, f32 fuzziness = 1.0f, f32 ref
     result.fuzziness = fuzziness;
     result.refraction_index = refraction_index;
     result.has_texture = 0;
+    result.emitted_color = COLOR_BLACK;
     return(result);
 }
 
@@ -577,7 +654,20 @@ material Material(texture tex, material_type type, f32 fuzziness = 1.0f, f32 ref
     result.refraction_index = refraction_index;
     result.has_texture = 1;
     result.tex = tex;
+    result.emitted_color = COLOR_BLACK;
     return(result);
+}
+
+material MaterialDiffuseLight(vec3 albedo, vec3 emitted_color)
+{
+    material result = Material(albedo, MaterialType_DiffuseLight);
+    result.emitted_color = emitted_color;
+    return(result);
+}
+
+material MaterialDiffuseLight(vec3 emitted_color)
+{
+    return(MaterialDiffuseLight(COLOR_WHITE, emitted_color));
 }
 
 struct hit_record
@@ -814,79 +904,6 @@ b32 HitSphereList(hit_record *record, interval ray_interval, ray3 ray, std::vect
     return(has_ray_hit_anything);
 }
 
-// TODO: RNG
-#include "cstdlib"
-inline f32 RandomFloat()
-{
-    f32 result = (f32)(std::rand()) / (RAND_MAX + 1.0f);
-    return(result);
-}
-inline f32 RandomFloat(f32 min, f32 max)
-{
-    f32 result = min + (max - min) * RandomFloat();
-    return(result);
-}
-inline s32 RandomInt(s32 min, s32 max)
-{
-    s32 result = int(RandomFloat((f32)min, ((f32)max)+ 1.0f));
-    return(result);
-}
-
-vec3 Lerp(vec3 A, vec3 B, f32 alpha)
-{
-    vec3 result = ((1.0f - alpha) * A) + (alpha * B);
-    return(result);
-}
-
-vec3 RandomVec3()
-{
-    vec3 result = Vec3(RandomFloat(), RandomFloat(), RandomFloat());
-    return(result);
-}
-vec3 RandomVec3(f32 min, f32 max)
-{
-    vec3 result = Vec3(RandomFloat(min, max), RandomFloat(min, max), RandomFloat(min, max));
-    return(result);
-}
-vec3 RandomUnitVec3()
-{
-    while(true)
-    {
-        vec3 point = RandomVec3(-1.0f, 1.0f);
-        f32 length_squared = LengthSquared(point);
-        // Reject vectors that are outside the unit sphere,
-        // but also reject ones that are too close to the center 
-        // and can cause floating-point issues
-        if((length_squared <= 1.0f) && (length_squared > 1e-18))
-        {
-            return(point / (SquareRoot(length_squared)));
-        }
-    }
-}
-vec3 RandomVectorOnUnitDisk()
-{
-    while(true)
-    {
-        vec3 point = Vec3(RandomFloat(-1.0f, 1.0f), RandomFloat(-1.0f, 1.0f), 0.0f);
-        if(LengthSquared(point) < 1.0f)
-        {
-            return(point);
-        }
-    }
-}
-vec3 RandomVectorOnHemisphere(vec3 normal)
-{
-    vec3 unit_sphere_vector = RandomUnitVec3();
-    if(DotProduct(unit_sphere_vector, normal) > 0.0f)
-    {
-        return(unit_sphere_vector);
-    }
-    else
-    {
-        return(-unit_sphere_vector);
-    }
-}
-
 inline vec3 Reflect(vec3 v1, vec3 normal)
 {
     vec3 result = v1 - 2 * DotProduct(v1, normal) * normal;
@@ -1050,19 +1067,141 @@ void AddBookOneScene(std::vector<hittable_sphere> &sphere_list)
     }
 }
 
+struct hittable_quad
+{
+    vec3 Q;
+    vec3 u;
+    vec3 v;
+    vec3 w;
+    vec3 normal;
+    f32 D;
+    material mat;
+};
+
+hittable_quad HittableQuad(vec3 Q, vec3 u, vec3 v, material mat)
+{
+    hittable_quad result;
+    result.Q = Q;
+    result.u = u;
+    result.v = v;
+    result.mat = mat;
+    vec3 n = CrossProduct(u, v);
+    result.w = n / DotProduct(n, n);
+    result.normal = Normalize(n);
+    result.D = DotProduct(result.normal, Q);
+    return(result);  
+}
+
+hittable_quad HittableQuad(vec3 Q, vec3 u, vec3 v)
+{
+    return(HittableQuad(Q, u, v, GRAY_MATTE_MATERIAL));
+}
+
+b32 HitQuad(hit_record *record, interval ray_interval, ray3 ray, hittable_quad quad)
+{
+    f32 denominator = DotProduct(quad.normal, ray.direction);
+    if(abs(denominator) < 1e-4)
+    {
+        return(0);
+    }
+    f32 t = (quad.D - DotProduct(quad.normal, ray.origin)) / denominator;
+    if(!ray_interval.Contains(t))
+    {
+        return(0);
+    }
+    vec3 intersection_point = ray.GetPositionAt(t);
+    vec3 planar_hitpoint_vector = intersection_point - quad.Q;
+    f32 alpha = DotProduct(quad.w, CrossProduct(planar_hitpoint_vector, quad.v));
+    f32 beta = DotProduct(quad.w, CrossProduct(quad.u, planar_hitpoint_vector));
+    
+    if(INTERVAL_UNIT.Contains(alpha) && INTERVAL_UNIT.Contains(beta))
+    {
+        record->texture_coordinates = Vec2(alpha, beta);
+        record->t = t;
+        record->point = intersection_point;
+        record->mat = quad.mat;
+        record->SetFaceNormal(ray, quad.normal);
+        return(1);
+    }
+    else
+    {
+        return(0);
+    }
+}
+
+b32 HitQuadList(hit_record *record, interval ray_interval, ray3 ray, std::vector<hittable_quad> &quad_list)
+{
+    b32 has_ray_hit_anything = 0;
+    f32 closest_so_far = ray_interval.max;
+    for(auto &quad : quad_list)
+    {
+        if(HitQuad(record, Interval(ray_interval.min, closest_so_far), ray, quad))
+        {
+            has_ray_hit_anything = 1;
+            closest_so_far = record->t;
+        }
+    }
+    return(has_ray_hit_anything);
+}
+
+vec3 GetRayColor(ray3 ray, std::vector<hittable_quad> quad_list, s32 depth)
+{
+    if(depth <= 0)
+    {
+        return(COLOR_BLACK);
+    }
+    hit_record record;
+    if(HitQuadList(&record, Interval(0.001f, FLOAT_INFINITY), ray, quad_list))
+    {
+        ray3 scattered_ray = ray;
+        vec3 attenuation_color = COLOR_BLACK;
+        vec3 emitted_color = record.mat.emitted_color;
+        if(Scatter(&record, ray, &scattered_ray, &attenuation_color))
+        {
+            vec3 color_from_scatter = HadamardProduct(attenuation_color, GetRayColor(scattered_ray, quad_list, depth - 1)); 
+            return(color_from_scatter + emitted_color);
+        }
+        else
+        {
+            return(emitted_color);
+        }
+    }
+    else
+    {
+        return(COLOR_BLACK);
+        //f32 alpha = 0.5f * (Normalize(ray.direction).y + 1.0f);
+        //return(Lerp(COLOR_WHITE, COLOR_LIGHT_BLUE, alpha));
+    }
+}
+
+void AddCornellBox(std::vector<hittable_quad> &quad_list)
+{
+    material red = Material(Vec3(0.65f, 0.05f, 0.05f), MaterialType_Lambertian);
+    material white = Material(Vec3(0.73f, 0.73f, 0.73f), MaterialType_Lambertian);
+    material green = Material(Vec3(0.12f, 0.45f, 0.15f), MaterialType_Lambertian);
+    material light = MaterialDiffuseLight(Vec3(15.0f)); 
+
+    quad_list.push_back(HittableQuad(Vec3(555, 0, 0), Vec3(0, 555, 0), Vec3(0, 0, 555), green));
+    quad_list.push_back(HittableQuad(Vec3(0, 0, 0), Vec3(0, 555, 0), Vec3(0, 0, 555), red));
+    quad_list.push_back(HittableQuad(Vec3(343, 554, 332), Vec3(-130, 0, 0), Vec3(0, 0, -105), light));
+    quad_list.push_back(HittableQuad(Vec3(0.0f), Vec3(555, 0, 0), Vec3(0, 0, 555), white));
+    quad_list.push_back(HittableQuad(Vec3(555.0f), Vec3(-555, 0, 0), Vec3(0, 0, -555), white));
+    quad_list.push_back(HittableQuad(Vec3(0, 0, 555), Vec3(555, 0, 0), Vec3(0, 555, 0), white));
+}
+
 int main(void)
 {
     std::string output_path = "bin/out.ppm";
     std::ofstream output(output_path, std::ios::binary);    
 
     f32 aspect_ratio = (4.0f / 3.0f);
-    s32 image_height = 360;
+    s32 image_height = 480;
     s32 image_width = (s32)(image_height * aspect_ratio);
 
     // TODO: Customizable camera settings, separate camera viewport calculations
-    vec3 camera_center =  Vec3(0.0f, 0.0f, 12.0f);
-    vec3 camera_look_at = Vec3(0.0f, 0.0f, 0.0f);
-    f32 vertical_fov = DEGREES_TO_RADIANS(20.0f);
+    vec3 camera_center =  Vec3(278.0f, 278.0f, -800.0f);
+    vec3 camera_look_at = Vec3(278.0f, 278.0f, 0.0f);
+    f32 vertical_fov = DEGREES_TO_RADIANS(40.0f);
     f32 focus_distance = 10.0f;
     f32 defocus_angle = 0.0f;
 
@@ -1087,13 +1226,13 @@ int main(void)
     vec3 defocus_disk_u = camera_frame.u * defocus_radius;
     vec3 defocus_disk_v = camera_frame.v * defocus_radius;
 
-    s32 samples_per_pixel = 8;
+    s32 samples_per_pixel = 32;
     f32 pixel_samples_scale = 1.0f / ((f32)samples_per_pixel);
 
-    s32 max_ray_recursion_depth = 32;
-
+    s32 max_ray_recursion_depth = 64;
+/*
     std::vector<hittable_sphere> sphere_list;
-    /*
+    
     texture tex = CheckerTexture(COLOR_BLACK, COLOR_WHITE, 0.32f);
     material gray_ground_mat = Material(tex, MaterialType_Lambertian);
     sphere_list.push_back(HittableSphere(Vec3(0.0f, -1000.0f, -1.0f), 1000.0f, gray_ground_mat));
@@ -1106,12 +1245,34 @@ int main(void)
 
     material dielectric_mat = Material(Vec3(1.0f, 1.0f, 1.0f), MaterialType_Dielectric, 1.0f, 1.5f);
     sphere_list.push_back(HittableSphere(Vec3(0.0f, 1.0f, 0.0f), 1.0f, dielectric_mat));
-    */
-    //AddBookOneScene(sphere_list);
+ 
     texture earth_texture = ImageTexture("assets/earthmap.jpg");
     material earth_material = Material(earth_texture, MaterialType_Lambertian);
-    sphere_list.push_back(HittableSphere(Vec3(0.0f, 0.0f, 0.0f), 2.0f, earth_material));
- 
+    sphere_list.push_back(HittableSphere(Vec3(7.0f, 1.0f, 2.0f), 0.6f, earth_material));
+    */
+    //AddBookOneScene(sphere_list);
+
+    std::vector<hittable_quad> quad_list;
+    AddCornellBox(quad_list);
+    /*material red_mat = Material(Vec3(1.0f, 0.15f, 0.15f), MaterialType_Lambertian);
+    material green_mat = Material(Vec3(0.2f, 0.95f, 0.15f), MaterialType_Lambertian);
+    material blue_mat  = Material(Vec3(0.1f, 0.25f, 1.0f), MaterialType_Lambertian);
+    material orange_mat = Material(Vec3(1.0f, 0.55f, 0.02f), MaterialType_Lambertian);
+    material teal_mat = Material(Vec3(0.18f, 0.76f, 0.78f), MaterialType_Lambertian);
+
+    quad_list.push_back(HittableQuad(Vec3(-3, -2, 5), Vec3(0, 0, -4), Vec3(0, 4, 0), red_mat));
+    quad_list.push_back(HittableQuad(Vec3(-2, -2, 0), Vec3(4, 0, 0), Vec3(0, 4, 0), green_mat));
+    quad_list.push_back(HittableQuad(Vec3(3, -2, 1), Vec3(0, 0, 4), Vec3(0, 4, 0), blue_mat));
+    quad_list.push_back(HittableQuad(Vec3(-2, 3, 1), Vec3(4, 0, 0), Vec3(0, 0, 4), orange_mat));
+    quad_list.push_back(HittableQuad(Vec3(-2, -3, 5), Vec3(4, 0, 0), Vec3(0, 0, -4), teal_mat));
+
+    material diffuse_mat = MaterialDiffuseLight(COLOR_WHITE, Vec3(4.0f));
+    quad_list.push_back(HittableQuad(Vec3(3, 1, -2), Vec3(2, 0, 0), Vec3(0, 2, 0), diffuse_mat));
+
+    material gray_ground_mat = Material(Vec3(0.5f), MaterialType_Lambertian);
+    quad_list.push_back(HittableQuad(Vec3(-10, 1.0f, 10), Vec3(100, 0, 0), Vec3(0, 0, -100), gray_ground_mat));
+    */
+
     output << "P6\n";
     output << std::to_string(image_width) << " " << std::to_string(image_height) << "\n";
     output << "255\n";
@@ -1134,7 +1295,7 @@ int main(void)
                 }
                 f32 ray_time = RandomFloat();
                 ray3 ray = Ray3(ray_origin, Normalize(pixel_sample - ray_origin), ray_time);
-                pixel_color = pixel_color + GetRayColor(ray, sphere_list, max_ray_recursion_depth);
+                pixel_color = pixel_color + GetRayColor(ray, quad_list, max_ray_recursion_depth);
             }
             pixel_color = pixel_color * pixel_samples_scale;
             u8 r = (u8)(Clamp(LinearToGamma(pixel_color.x), INTERVAL_INTENSITY) * 255);

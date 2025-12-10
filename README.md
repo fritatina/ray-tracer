@@ -4,5 +4,8 @@ A ray-tracer I'm bulding as a learning project following the "Ray Tracing in One
 
 *"The line extends endlessly and is unending in both directions. The length of a line cannot be measured."*
 
+### Day 4 - Textures and Motion Blur
+![img2](img/img2.png)
+
 ### Day 1/2 - Balls
 ![img1](img/img1.png)
