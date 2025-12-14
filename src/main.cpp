@@ -392,7 +392,7 @@ inline f32 Clamp(f32 x, f32 min, f32 max)
     return(Clamp(x, t));
 }
 
-inline interval Expand(interval t, f32 delta)
+inline interval ExpandInterval(interval t, f32 delta)
 {
     f32 padding = (delta / 2.0f);
     interval result = Interval(t.min - padding, t.max + padding);
@@ -520,11 +520,11 @@ vec3 RandomVectorOnHemisphere(vec3 normal)
     }
 }
 
-enum texture_type
+enum texture_type : u32
 {
-    TextureType_SolidColor = 0,
-    TextureType_Checker = 1,
-    TextureType_Image = 2,
+    TextureType_SolidColor,
+    TextureType_Checker,
+    TextureType_Image,
 };
 
 struct texture
@@ -614,12 +614,12 @@ vec3 SampleTexture(texture tex, vec2 texture_coordinates, vec3 point)
     return(COLOR_CYAN);
 }
 
-enum material_type
+enum material_type : u32
 {
-    MaterialType_Lambertian = 0,
-    MaterialType_Metal = 1,
-    MaterialType_Dielectric = 2,
-    MaterialType_DiffuseLight = 3,
+    MaterialType_Lambertian,
+    MaterialType_Metal,
+    MaterialType_Dielectric,
+    MaterialType_DiffuseLight,
 };
 
 struct material
@@ -670,6 +670,8 @@ material MaterialDiffuseLight(vec3 emitted_color)
     return(MaterialDiffuseLight(COLOR_WHITE, emitted_color));
 }
 
+material GRAY_MATTE_MATERIAL = Material(Vec3(0.5f, 0.5f, 0.5f), MaterialType_Lambertian);
+
 struct hit_record
 {
     vec3 point;
@@ -703,206 +705,6 @@ struct hit_record
         }
     }
 };
-
-struct axis_aligned_bounding_box
-{
-    interval x;
-    interval y;
-    interval z;
-
-    inline interval GetInterval(s32 i)
-    {
-        if(i == 0)
-        { 
-            return(x);
-        }
-        else if(i == 1)
-        {
-            return(y);
-        }
-        else
-        {
-            return(z);
-        }
-        
-    }
-};
-
-axis_aligned_bounding_box AxisAlignedBoundingBox()
-{
-    axis_aligned_bounding_box result;
-    result.x = INTERVAL_EMPTY;
-    result.y = INTERVAL_EMPTY;
-    result.z = INTERVAL_EMPTY;
-    return(result);
-}
-
-axis_aligned_bounding_box AxisAlignedBoundingBox(interval x, interval y, interval z)
-{
-    axis_aligned_bounding_box result;
-    result.x = x;
-    result.y = y;
-    result.z = z;
-    return(result);
-}
-
-axis_aligned_bounding_box AxisAlignedBoundingBox(vec3 a, vec3 b)
-{
-    axis_aligned_bounding_box result;
-    result.x = (a.x <= b.x) ? Interval(a.x, b.x) : Interval(b.x, a.x);
-    result.y = (a.y <= b.y) ? Interval(a.y, b.y) : Interval(b.y, a.y);
-    result.z = (a.z <= b.z) ? Interval(a.z, b.z) : Interval(b.z, a.z);
-    return(result); 
-}
-
-axis_aligned_bounding_box AxisAlignedBoundingBox(axis_aligned_bounding_box box1, axis_aligned_bounding_box box2)
-{
-    axis_aligned_bounding_box result;
-    result.x = Interval(box1.x, box2.x);
-    result.y = Interval(box1.y, box2.y);
-    result.z = Interval(box1.z, box2.z);
-    return(result);
-}
-
-b32 HitAABB(axis_aligned_bounding_box aabb, ray3 ray, interval ray_interval)
-{
-    vec3 origin = ray.origin;
-    vec3 direction = ray.direction;
-    for(s32 axis = 0; axis <= 2; axis++)
-    {
-        interval axis_interval = aabb.GetInterval(axis);
-        f32 inverted_axis_direction = 1.0f / direction[axis];
-        f32 t0 = (axis_interval.min - origin[axis]) * inverted_axis_direction;
-        f32 t1 = (axis_interval.max - origin[axis]) * inverted_axis_direction;
-        if(t0 < t1)
-        {
-            if(t0 > ray_interval.min)
-            {
-                ray_interval.min = t0;
-            }
-            if(t1 < ray_interval.max)
-            {
-                ray_interval.max = t1;
-            }
-        }
-        else
-        {
-            if(t1 > ray_interval.min)
-            {
-                ray_interval.min = t1;
-            }
-            if(t0 < ray_interval.max)
-            {
-                ray_interval.max = t0;
-            }
-        }
-
-        if(ray_interval.max <= ray_interval.min)
-        {
-            return(0);
-        }
-    }
-    return(1);
-}
-
-struct hittable_sphere
-{
-    ray3 center;
-    f32 radius;
-    material mat;
-};
-
-material GRAY_MATTE_MATERIAL = Material(Vec3(0.5f, 0.5f, 0.5f), MaterialType_Lambertian);
-
-hittable_sphere HittableSphere(vec3 center1, vec3 center2, f32 radius, material mat)
-{
-    hittable_sphere result;
-    result.center = Ray3(center1, center2 - center1);
-    result.radius = radius;
-    result.mat = mat;
-    return(result);
-}
-
-hittable_sphere HittableSphere(ray3 center, f32 radius, material mat)
-{
-    hittable_sphere result;
-    result.center = center;
-    result.radius = radius;
-    result.mat = mat;
-    return(result);
-}
-
-hittable_sphere HittableSphere(vec3 center, f32 radius, material mat)
-{
-    return(HittableSphere(Ray3(center, Vec3(0.0f)), radius, mat));
-}
-
-hittable_sphere HittableSphere(ray3 center, f32 radius)
-{
-    return(HittableSphere(center, radius, GRAY_MATTE_MATERIAL));
-}
-
-hittable_sphere HittableSphere(vec3 center, f32 radius)
-{
-    return(HittableSphere(center, radius, GRAY_MATTE_MATERIAL));
-}
-
-vec2 GetHittableSphereUVCoordinates(hittable_sphere sphere, vec3 point)
-{
-    f32 theta = Arccosine(-point.y);
-    f32 phi = Arctangent2(-point.z, point.x) + PI32;
-    vec2 result;
-    result.u = phi / (2 * PI32);
-    result.v = theta / PI32;
-    return(result);
-}
-
-b32 HitSphere(hit_record *record, interval ray_interval, ray3 ray, hittable_sphere sphere)
-{
-    vec3 current_center = sphere.center.GetPositionAt(ray.time);
-    vec3 oc = current_center - ray.origin;
-    f32 a = LengthSquared(ray.direction);
-    f32 h = DotProduct(ray.direction, oc);
-    f32 c = LengthSquared(oc) - (sphere.radius * sphere.radius);
-    f32 discriminant = h*h - a*c;
-    if(discriminant < 0)
-    {
-        return(0);
-    }
-    f32 sqrt_d = SquareRoot(discriminant);
-    f32 root = (h - sqrt_d) / a;
-    if(!ray_interval.Surrounds(root))
-    {
-        root = (h + sqrt_d) / a;
-        if(!ray_interval.Surrounds(root))
-        {
-            return(0);
-        }
-    }
-
-    record->t = root;
-    record->point = ray.GetPositionAt(root);
-    vec3 outward_normal = (record->point - current_center) / sphere.radius;
-    record->SetFaceNormal(ray, outward_normal);
-    record->texture_coordinates = GetHittableSphereUVCoordinates(sphere, outward_normal);
-    record->mat = sphere.mat;
-    return(1);
-}
-
-b32 HitSphereList(hit_record *record, interval ray_interval, ray3 ray, std::vector<hittable_sphere> &sphere_list)
-{
-    b32 has_ray_hit_anything = 0;
-    f32 closest_so_far = ray_interval.max;
-    for(auto &sphere : sphere_list)
-    {
-        if(HitSphere(record, Interval(ray_interval.min, closest_so_far), ray, sphere))
-        {
-            has_ray_hit_anything = 1;
-            closest_so_far = record->t;
-        }
-    }
-    return(has_ray_hit_anything);
-}
 
 inline vec3 Reflect(vec3 v1, vec3 normal)
 {
@@ -985,33 +787,6 @@ b32 Scatter(hit_record *record, ray3 incoming_ray, ray3 *scattered_ray, vec3 *at
     return(0);
 }
 
-vec3 GetRayColor(ray3 ray, std::vector<hittable_sphere> sphere_list, s32 depth)
-{
-    if(depth <= 0)
-    {
-        return(COLOR_BLACK);
-    }
-    hit_record record;
-    if(HitSphereList(&record, Interval(0.001f, FLOAT_INFINITY), ray, sphere_list))
-    {
-        ray3 scattered_ray = ray;
-        vec3 attenuation_color = COLOR_BLACK;
-        if(Scatter(&record, ray, &scattered_ray, &attenuation_color))
-        {
-            return(HadamardProduct(attenuation_color, GetRayColor(scattered_ray, sphere_list, depth - 1)));
-        }
-        else
-        {
-            return(COLOR_BLACK);
-        }
-    }
-    else
-    {
-        f32 alpha = 0.5f * (Normalize(ray.direction).y + 1.0f);
-        return(Lerp(COLOR_WHITE, COLOR_LIGHT_BLUE, alpha));
-    }
-}
-
 f32 LinearToGamma(f32 linear_component)
 {
     if(linear_component > 0.0f)
@@ -1028,43 +803,122 @@ struct camera_frame_basis
     vec3 w;
 };
 
-void AddBookOneScene(std::vector<hittable_sphere> &sphere_list)
+struct axis_aligned_bounding_box
 {
-    for(s32 a = -11; a < 11; a++)
+    interval x;
+    interval y;
+    interval z;
+
+    inline interval GetInterval(s32 i)
     {
-        for(s32 b = -11; b < 11; b++)
+        if(i == 0)
+        { 
+            return(x);
+        }
+        else if(i == 1)
         {
-            vec3 center = Vec3(a + 0.9f * RandomFloat(), 0.2f, b + 0.9f * RandomFloat());
-            if(Length(center - Vec3(4.0f, 0.2f, 0.0f)) > 0.9f)
-            {
-                material sphere_material = GRAY_MATTE_MATERIAL;
-                f32 choose_material = RandomFloat();   
-                if(choose_material < 0.8f)
-                {
-                    vec3 albedo = HadamardProduct(RandomVec3(), RandomVec3());
-                    sphere_material.albedo = albedo;
-                    vec3 center2 = center + Vec3(0.0f, RandomFloat(0.0f, 0.5f), 0.0f);
-                    sphere_list.push_back(HittableSphere(center, center2, 0.2f, sphere_material));
-                }
-                else if(choose_material < 0.95f)
-                {
-                    vec3 albedo = RandomVec3(0.5f, 1.0f);
-                    f32 fuzziness = RandomFloat(0.0f, 0.5f);
-                    sphere_material.type = MaterialType_Metal;
-                    sphere_material.albedo = albedo;
-                    sphere_material.fuzziness = fuzziness;
-                    sphere_list.push_back(HittableSphere(center, 0.2f, sphere_material));
-                }
-                else
-                {
-                    sphere_material.type = MaterialType_Dielectric;
-                    sphere_material.albedo = COLOR_WHITE;
-                    sphere_material.refraction_index = 1.5f;
-                    sphere_list.push_back(HittableSphere(center, 0.2f, sphere_material));
-                }
-            }
+            return(y);
+        }
+        else
+        {
+            return(z);
         }
     }
+
+    inline s32 GetLongestAxis()
+    {
+        if(x.Size() > y.Size())
+        {
+            if(x.Size() > z.Size())
+            {
+                return(0);
+            }
+            else
+            {
+                return(2);
+            }
+        }
+        else
+        {
+            if(y.Size() > z.Size())
+            {
+                return(1);
+            }
+            else
+            {
+                return(2);
+            }
+        }
+        return(2);
+    }
+
+    inline void PadToMinimums()
+    {
+        f32 delta = 0.0001f;
+        if(x.Size() < delta)
+        {
+            x = ExpandInterval(x, delta);
+        }
+        if(y.Size() < delta)
+        {
+            y = ExpandInterval(y, delta);
+        }
+        if(z.Size() < delta)
+        {
+            z = ExpandInterval(z, delta);
+        }
+    }
+};
+
+axis_aligned_bounding_box AxisAlignedBoundingBox(interval x, interval y, interval z)
+{
+    axis_aligned_bounding_box result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    result.PadToMinimums();
+    return(result);
+}
+
+axis_aligned_bounding_box AxisAlignedBoundingBox(interval i)
+{
+    return(AxisAlignedBoundingBox(i, i, i));
+}
+
+axis_aligned_bounding_box AxisAlignedBoundingBox(vec3 a, vec3 b)
+{
+    axis_aligned_bounding_box result;
+    result.x = (a.x <= b.x) ? Interval(a.x, b.x) : Interval(b.x, a.x);
+    result.y = (a.y <= b.y) ? Interval(a.y, b.y) : Interval(b.y, a.y);
+    result.z = (a.z <= b.z) ? Interval(a.z, b.z) : Interval(b.z, a.z);
+    result.PadToMinimums();
+    return(result); 
+}
+
+axis_aligned_bounding_box AxisAlignedBoundingBox(axis_aligned_bounding_box box1, axis_aligned_bounding_box box2)
+{
+    axis_aligned_bounding_box result;
+    result.x = Interval(box1.x, box2.x);
+    result.y = Interval(box1.y, box2.y);
+    result.z = Interval(box1.z, box2.z);
+    return(result);
+}
+
+struct hittable_sphere
+{
+    ray3 center;
+    f32 radius;
+    material mat;
+};
+
+vec2 GetSphereUVCoordinates(hittable_sphere sphere, vec3 point)
+{
+    f32 theta = Arccosine(-point.y);
+    f32 phi = Arctangent2(-point.z, point.x) + PI32;
+    vec2 result;
+    result.u = phi / (2 * PI32);
+    result.v = theta / PI32;
+    return(result);
 }
 
 struct hittable_quad
@@ -1078,26 +932,167 @@ struct hittable_quad
     material mat;
 };
 
-hittable_quad HittableQuad(vec3 Q, vec3 u, vec3 v, material mat)
+enum object_type : u32
 {
-    hittable_quad result;
-    result.Q = Q;
-    result.u = u;
-    result.v = v;
-    result.mat = mat;
+    ObjectType_Sphere,
+    ObjectType_Quad,
+    ObjectType_BVHNode,
+};
+struct hittable_object
+{
+    object_type type;
+
+    axis_aligned_bounding_box aabb;
+    hittable_object *left;
+    hittable_object *right;
+
+    hittable_sphere sphere;
+    hittable_quad quad;
+};
+
+hittable_object CreateHittableSphere(ray3 center, f32 radius, material mat)
+{
+    hittable_object result;
+    result.type = ObjectType_Sphere;
+    result.sphere.center = center;
+    result.sphere.radius = radius;
+    result.sphere.mat = mat;
+    vec3 radius_vec = Vec3(radius);
+    axis_aligned_bounding_box aabb1 = AxisAlignedBoundingBox(result.sphere.center.GetPositionAt(0.0f) - radius_vec, result.sphere.center.GetPositionAt(0.0f) + radius_vec);
+    axis_aligned_bounding_box aabb2 = AxisAlignedBoundingBox(result.sphere.center.GetPositionAt(1.0f) - radius_vec, result.sphere.center.GetPositionAt(1.0f) + radius_vec);
+    result.aabb = AxisAlignedBoundingBox(aabb1, aabb2);
+    return(result);
+}
+
+hittable_object CreateHittableSphere(vec3 center1, vec3 center2, f32 radius, material mat)
+{
+    return(CreateHittableSphere(Ray3(center1, center2 - center1), radius, mat));
+}
+
+hittable_object CreateHittableSphere(vec3 center, f32 radius, material mat)
+{
+    return(CreateHittableSphere(Ray3(center, Vec3(0.0f)), radius, mat));
+}
+
+hittable_object CreateHittableSphere(ray3 center, f32 radius)
+{
+    return(CreateHittableSphere(center, radius, GRAY_MATTE_MATERIAL));
+}
+
+hittable_object CreateHittableSphere(vec3 center, f32 radius)
+{
+    return(CreateHittableSphere(center, radius, GRAY_MATTE_MATERIAL));
+}
+
+hittable_object CreateHittableQuad(vec3 Q, vec3 u, vec3 v, material mat)
+{
+    hittable_object result;
+    result.type = ObjectType_Quad;
+    result.quad.Q = Q;
+    result.quad.u = u;
+    result.quad.v = v;
+    result.quad.mat = mat;
     vec3 n = CrossProduct(u, v);
-    result.w = n / DotProduct(n, n);
-    result.normal = Normalize(n);
-    result.D = DotProduct(result.normal, Q);
+    result.quad.w = n / DotProduct(n, n);
+    result.quad.normal = Normalize(n);
+    result.quad.D = DotProduct(result.quad.normal, Q);
+    axis_aligned_bounding_box aabb1 = AxisAlignedBoundingBox(Q, Q + u + v);
+    axis_aligned_bounding_box aabb2 = AxisAlignedBoundingBox(Q + u, Q + v);
+    result.aabb = AxisAlignedBoundingBox(aabb1, aabb2);
     return(result);  
 }
 
-hittable_quad HittableQuad(vec3 Q, vec3 u, vec3 v)
+hittable_object CreateHittableQuad(vec3 Q, vec3 u, vec3 v)
 {
-    return(HittableQuad(Q, u, v, GRAY_MATTE_MATERIAL));
+    return(CreateHittableQuad(Q, u, v, GRAY_MATTE_MATERIAL));
 }
 
-b32 HitQuad(hit_record *record, interval ray_interval, ray3 ray, hittable_quad quad)
+b32 AABBCompareAxis(hittable_object &a, hittable_object &b, s32 axis)
+{
+    return(a.aabb.GetInterval(axis).min < b.aabb.GetInterval(axis).min);
+}
+b32 AABBCompareX(hittable_object &a, hittable_object &b)
+{
+    return(AABBCompareAxis(a, b, 0));
+}
+b32 AABBCompareY(hittable_object &a, hittable_object &b)
+{
+    return(AABBCompareAxis(a, b, 1));
+}
+b32 AABBCompareZ(hittable_object &a, hittable_object &b)
+{
+    return(AABBCompareAxis(a, b, 2));
+}
+
+#include "algorithm"
+void BuildBVHNode(hittable_object *root, std::vector<hittable_object> &objects, u32 start, u32 end)
+{
+    root->type = ObjectType_BVHNode;
+    axis_aligned_bounding_box aabb = AxisAlignedBoundingBox(INTERVAL_EMPTY);
+    for(u32 i = start; i < end; i++)
+    {
+        aabb = AxisAlignedBoundingBox(aabb, objects[i].aabb);
+    }
+    root->aabb = aabb;
+    s32 axis = aabb.GetLongestAxis();
+    auto comparison_func = (axis == 0) ? AABBCompareX 
+                         : (axis == 1) ? AABBCompareY
+                         : AABBCompareZ;
+    u32 length = end - start;
+    if(length == 1)
+    {
+        root->left = root->right = &objects[start];
+    }
+    else if(length == 2)
+    {
+        root->left = &objects[start];
+        root->right = &objects[start + 1];
+    }
+    else
+    {
+        std::sort(std::begin(objects) + start, std::begin(objects) + end, comparison_func);
+        u32 mid = start + (length / 2);
+        root->left = (hittable_object*) malloc(sizeof(hittable_object));
+        root->right = (hittable_object*) malloc(sizeof(hittable_object)); 
+        BuildBVHNode(root->left, objects, start, mid);
+        BuildBVHNode(root->right, objects, mid, end);
+    }
+    root->aabb = AxisAlignedBoundingBox(root->left->aabb, root->right->aabb);
+}
+
+b32 HitSphere(hittable_sphere sphere, ray3 ray, interval ray_interval, hit_record *record)
+{
+    vec3 current_center = sphere.center.GetPositionAt(ray.time);
+    vec3 oc = current_center - ray.origin;
+    f32 a = LengthSquared(ray.direction);
+    f32 h = DotProduct(ray.direction, oc);
+    f32 c = LengthSquared(oc) - (sphere.radius * sphere.radius);
+    f32 discriminant = h*h - a*c;
+    if(discriminant < 0)
+    {
+        return(0);
+    }
+    f32 sqrt_d = SquareRoot(discriminant);
+    f32 root = (h - sqrt_d) / a;
+    if(!ray_interval.Surrounds(root))
+    {
+        root = (h + sqrt_d) / a;
+        if(!ray_interval.Surrounds(root))
+        {
+            return(0);
+        }
+    }
+
+    record->t = root;
+    record->point = ray.GetPositionAt(root);
+    vec3 outward_normal = (record->point - current_center) / sphere.radius;
+    record->SetFaceNormal(ray, outward_normal);
+    record->texture_coordinates = GetSphereUVCoordinates(sphere, outward_normal);
+    record->mat = sphere.mat;
+    return(1);
+}
+
+b32 HitQuad(hittable_quad quad, ray3 ray, interval ray_interval, hit_record *record)
 {
     f32 denominator = DotProduct(quad.normal, ray.direction);
     if(abs(denominator) < 1e-4)
@@ -1129,13 +1124,92 @@ b32 HitQuad(hit_record *record, interval ray_interval, ray3 ray, hittable_quad q
     }
 }
 
-b32 HitQuadList(hit_record *record, interval ray_interval, ray3 ray, std::vector<hittable_quad> &quad_list)
+b32 HitAABB(axis_aligned_bounding_box aabb, ray3 ray, interval ray_interval)
+{
+    vec3 origin = ray.origin;
+    vec3 direction = ray.direction;
+    for(s32 axis = 0; axis <= 2; axis++)
+    {
+        interval axis_interval = aabb.GetInterval(axis);
+        f32 inverted_axis_direction = 1.0f / direction[axis];
+        f32 t0 = (axis_interval.min - origin[axis]) * inverted_axis_direction;
+        f32 t1 = (axis_interval.max - origin[axis]) * inverted_axis_direction;
+        if(t0 < t1)
+        {
+            if(t0 > ray_interval.min)
+            {
+                ray_interval.min = t0;
+            }
+            if(t1 < ray_interval.max)
+            {
+                ray_interval.max = t1;
+            }
+        }
+        else
+        {
+            if(t1 > ray_interval.min)
+            {
+                ray_interval.min = t1;
+            }
+            if(t0 < ray_interval.max)
+            {
+                ray_interval.max = t0;
+            }
+        }
+
+        if(ray_interval.max <= ray_interval.min)
+        {
+            return(0);
+        }
+    }
+    return(1);
+}
+
+b32 HitObject(hittable_object *object, ray3 ray, interval ray_interval, hit_record *record)
+{
+    switch(object->type)
+    {
+        case(ObjectType_Sphere):
+        {
+            return(HitSphere(object->sphere, ray, ray_interval, record));
+        } break;
+        case(ObjectType_Quad):
+        {
+            return(HitQuad(object->quad, ray, ray_interval, record));
+        } break;
+        case(ObjectType_BVHNode):
+        {
+            if(HitAABB(object->aabb, ray, ray_interval))
+            {
+                b32 hit_left = HitObject(object->left, ray, ray_interval, record);
+                if(hit_left)
+                {
+                    ray_interval.max = record->t;
+                }
+                b32 hit_right = HitObject(object->right, ray, ray_interval, record);
+                return(hit_left || hit_right);
+            }
+            else
+            {
+                return(0);
+            }
+        }
+        default:
+        {
+            std::cout << "error. undefined object type.\n";
+        } break;
+    }
+    return(0);
+}
+
+#if 0
+b32 HitScene(std::vector<hittable_object> &scene, ray3 ray, interval ray_interval, hit_record *record)
 {
     b32 has_ray_hit_anything = 0;
     f32 closest_so_far = ray_interval.max;
-    for(auto &quad : quad_list)
+    for(auto &o : scene)
     {
-        if(HitQuad(record, Interval(ray_interval.min, closest_so_far), ray, quad))
+        if(HitObject(&o, ray, Interval(ray_interval.min, closest_so_far), record))
         {
             has_ray_hit_anything = 1;
             closest_so_far = record->t;
@@ -1143,22 +1217,51 @@ b32 HitQuadList(hit_record *record, interval ray_interval, ray3 ray, std::vector
     }
     return(has_ray_hit_anything);
 }
-
-vec3 GetRayColor(ray3 ray, std::vector<hittable_quad> quad_list, s32 depth)
+vec3 CalculateRayColor(std::vector<hittable_object> &scene, ray3 ray, s32 depth)
 {
     if(depth <= 0)
     {
         return(COLOR_BLACK);
     }
     hit_record record;
-    if(HitQuadList(&record, Interval(0.001f, FLOAT_INFINITY), ray, quad_list))
+    if(HitScene(scene, ray, Interval(0.001f, FLOAT_INFINITY), &record))
     {
         ray3 scattered_ray = ray;
         vec3 attenuation_color = COLOR_BLACK;
         vec3 emitted_color = record.mat.emitted_color;
         if(Scatter(&record, ray, &scattered_ray, &attenuation_color))
         {
-            vec3 color_from_scatter = HadamardProduct(attenuation_color, GetRayColor(scattered_ray, quad_list, depth - 1)); 
+            vec3 color_from_scatter = HadamardProduct(attenuation_color, CalculateRayColor(scene, scattered_ray, depth - 1)); 
+            return(color_from_scatter + emitted_color);
+        }
+        else
+        {
+            return(emitted_color);
+        }
+    }
+    else
+    {
+        f32 alpha = 0.5f * (Normalize(ray.direction).y + 1.0f);
+        return(Lerp(COLOR_WHITE, COLOR_LIGHT_BLUE, alpha));
+    }
+}
+#endif
+
+vec3 CalculateRayColor(hittable_object *scene_root, ray3 ray, s32 depth)
+{
+    if(depth <= 0)
+    {
+        return(COLOR_BLACK);
+    }
+    hit_record record;
+    if(HitObject(scene_root, ray, Interval(0.0001f, FLOAT_INFINITY), &record))
+    {
+        ray3 scattered_ray = ray;
+        vec3 attenuation_color = COLOR_BLACK;
+        vec3 emitted_color = record.mat.emitted_color;
+        if(Scatter(&record, ray, &scattered_ray, &attenuation_color))
+        {
+            vec3 color_from_scatter = HadamardProduct(attenuation_color, CalculateRayColor(scene_root, scattered_ray, depth - 1)); 
             return(color_from_scatter + emitted_color);
         }
         else
@@ -1169,24 +1272,95 @@ vec3 GetRayColor(ray3 ray, std::vector<hittable_quad> quad_list, s32 depth)
     else
     {
         return(COLOR_BLACK);
-        //f32 alpha = 0.5f * (Normalize(ray.direction).y + 1.0f);
-        //return(Lerp(COLOR_WHITE, COLOR_LIGHT_BLUE, alpha));
     }
 }
 
-void AddCornellBox(std::vector<hittable_quad> &quad_list)
+enum scene_type : u32
 {
-    material red = Material(Vec3(0.65f, 0.05f, 0.05f), MaterialType_Lambertian);
-    material white = Material(Vec3(0.73f, 0.73f, 0.73f), MaterialType_Lambertian);
-    material green = Material(Vec3(0.12f, 0.45f, 0.15f), MaterialType_Lambertian);
-    material light = MaterialDiffuseLight(Vec3(15.0f)); 
+    SceneType_Balls,
+    SceneType_CornellBox,
+    SceneType_Base,
+};
+void BuildScene(std::vector<hittable_object> &scene, scene_type type)
+{
+    // TODO: Adjust camera based on scene
+    switch(type)
+    {
+        case(SceneType_Balls):
+        {
+            texture tex = CheckerTexture(COLOR_BLACK, COLOR_WHITE, 0.32f);
+            material gray_ground_mat = Material(tex, MaterialType_Lambertian);
+            scene.push_back(CreateHittableSphere(Vec3(0.0f, -1000.0f, -1.0f), 1000.0f, gray_ground_mat));
 
-    quad_list.push_back(HittableQuad(Vec3(555, 0, 0), Vec3(0, 555, 0), Vec3(0, 0, 555), green));
-    quad_list.push_back(HittableQuad(Vec3(0, 0, 0), Vec3(0, 555, 0), Vec3(0, 0, 555), red));
-    quad_list.push_back(HittableQuad(Vec3(343, 554, 332), Vec3(-130, 0, 0), Vec3(0, 0, -105), light));
-    quad_list.push_back(HittableQuad(Vec3(0.0f), Vec3(555, 0, 0), Vec3(0, 0, 555), white));
-    quad_list.push_back(HittableQuad(Vec3(555.0f), Vec3(-555, 0, 0), Vec3(0, 0, -555), white));
-    quad_list.push_back(HittableQuad(Vec3(0, 0, 555), Vec3(555, 0, 0), Vec3(0, 555, 0), white));
+            material lambertian_mat = Material(Vec3(0.4f, 0.2f, 0.1f), MaterialType_Lambertian);
+            scene.push_back(CreateHittableSphere(Vec3(-4.0f, 1.0f, 0.0f), 1.0f, lambertian_mat));
+
+            material metal_mat = Material(Vec3(0.7f, 0.6f, 0.5f), MaterialType_Metal, 0.0f);
+            scene.push_back(CreateHittableSphere(Vec3(4.0f, 1.0f, 0.0f), 1.0f, metal_mat));
+
+            material dielectric_mat = Material(Vec3(1.0f, 1.0f, 1.0f), MaterialType_Dielectric, 1.0f, 1.5f);
+            scene.push_back(CreateHittableSphere(Vec3(0.0f, 1.0f, 0.0f), 1.0f, dielectric_mat));
+
+            texture earth_texture = ImageTexture("assets/earthmap.jpg");
+            material earth_material = Material(earth_texture, MaterialType_Lambertian);
+            scene.push_back(CreateHittableSphere(Vec3(7.0f, 1.0f, 2.0f), 0.6f, earth_material));
+
+            for(s32 a = -11; a < 11; a++)
+            {
+                for(s32 b = -11; b < 11; b++)
+                {
+                    vec3 center = Vec3(a + 0.9f * RandomFloat(), 0.2f, b + 0.9f * RandomFloat());
+                    if(Length(center - Vec3(4.0f, 0.2f, 0.0f)) > 0.9f)
+                    {
+                        material sphere_material = GRAY_MATTE_MATERIAL;
+                        f32 choose_material = RandomFloat();   
+                        if(choose_material < 0.8f)
+                        {
+                            vec3 albedo = HadamardProduct(RandomVec3(), RandomVec3());
+                            sphere_material.albedo = albedo;
+                            vec3 center2 = center + Vec3(0.0f, RandomFloat(0.0f, 0.5f), 0.0f);
+                            scene.push_back(CreateHittableSphere(center, center2, 0.2f, sphere_material));
+                        }
+                        else if(choose_material < 0.95f)
+                        {
+                            vec3 albedo = RandomVec3(0.5f, 1.0f);
+                            f32 fuzziness = RandomFloat(0.0f, 0.5f);
+                            sphere_material.type = MaterialType_Metal;
+                            sphere_material.albedo = albedo;
+                            sphere_material.fuzziness = fuzziness;
+                            scene.push_back(CreateHittableSphere(center, 0.2f, sphere_material));
+                        }
+                        else
+                        {
+                            sphere_material.type = MaterialType_Dielectric;
+                            sphere_material.albedo = COLOR_WHITE;
+                            sphere_material.refraction_index = 1.5f;
+                            scene.push_back(CreateHittableSphere(center, 0.2f, sphere_material));
+                        }
+                    }
+                }
+            }
+        } break;
+
+        case(SceneType_CornellBox):
+        {
+            material red = Material(Vec3(0.65f, 0.05f, 0.05f), MaterialType_Lambertian);
+            material white = Material(Vec3(0.73f, 0.73f, 0.73f), MaterialType_Lambertian);
+            material green = Material(Vec3(0.12f, 0.45f, 0.15f), MaterialType_Lambertian);
+            material light = MaterialDiffuseLight(Vec3(15.0f)); 
+
+            scene.push_back(CreateHittableQuad(Vec3(555, 0, 0), Vec3(0, 555, 0), Vec3(0, 0, 555), green));
+            scene.push_back(CreateHittableQuad(Vec3(0, 0, 0), Vec3(0, 555, 0), Vec3(0, 0, 555), red));
+            scene.push_back(CreateHittableQuad(Vec3(343, 554, 332), Vec3(-130, 0, 0), Vec3(0, 0, -105), light));
+            scene.push_back(CreateHittableQuad(Vec3(0.0f), Vec3(555, 0, 0), Vec3(0, 0, 555), white));
+            scene.push_back(CreateHittableQuad(Vec3(555.0f), Vec3(-555, 0, 0), Vec3(0, 0, -555), white));
+            scene.push_back(CreateHittableQuad(Vec3(0, 0, 555), Vec3(555, 0, 0), Vec3(0, 555, 0), white));
+        } break;
+
+        default:
+        {
+        } break;
+    }
 }
 
 int main(void)
@@ -1194,8 +1368,8 @@ int main(void)
     std::string output_path = "bin/out.ppm";
     std::ofstream output(output_path, std::ios::binary);    
 
-    f32 aspect_ratio = (4.0f / 3.0f);
-    s32 image_height = 480;
+    f32 aspect_ratio = (9.0f / 9.0f);
+    s32 image_height = 240;
     s32 image_width = (s32)(image_height * aspect_ratio);
 
     // TODO: Customizable camera settings, separate camera viewport calculations
@@ -1226,53 +1400,16 @@ int main(void)
     vec3 defocus_disk_u = camera_frame.u * defocus_radius;
     vec3 defocus_disk_v = camera_frame.v * defocus_radius;
 
-    s32 samples_per_pixel = 32;
+    s32 samples_per_pixel = 16;
     f32 pixel_samples_scale = 1.0f / ((f32)samples_per_pixel);
 
     s32 max_ray_recursion_depth = 64;
-/*
-    std::vector<hittable_sphere> sphere_list;
+
+    std::vector<hittable_object> scene;
+    BuildScene(scene, SceneType_CornellBox);
+    hittable_object *scene_root = (hittable_object*)malloc(sizeof(hittable_object));
+    BuildBVHNode(scene_root, scene, 0, scene.size());
     
-    texture tex = CheckerTexture(COLOR_BLACK, COLOR_WHITE, 0.32f);
-    material gray_ground_mat = Material(tex, MaterialType_Lambertian);
-    sphere_list.push_back(HittableSphere(Vec3(0.0f, -1000.0f, -1.0f), 1000.0f, gray_ground_mat));
-
-    material lambertian_mat = Material(Vec3(0.4f, 0.2f, 0.1f), MaterialType_Lambertian);
-    sphere_list.push_back(HittableSphere(Vec3(-4.0f, 1.0f, 0.0f), 1.0f, lambertian_mat));
-
-    material metal_mat = Material(Vec3(0.7f, 0.6f, 0.5f), MaterialType_Metal, 0.0f);
-    sphere_list.push_back(HittableSphere(Vec3(4.0f, 1.0f, 0.0f), 1.0f, metal_mat));
-
-    material dielectric_mat = Material(Vec3(1.0f, 1.0f, 1.0f), MaterialType_Dielectric, 1.0f, 1.5f);
-    sphere_list.push_back(HittableSphere(Vec3(0.0f, 1.0f, 0.0f), 1.0f, dielectric_mat));
- 
-    texture earth_texture = ImageTexture("assets/earthmap.jpg");
-    material earth_material = Material(earth_texture, MaterialType_Lambertian);
-    sphere_list.push_back(HittableSphere(Vec3(7.0f, 1.0f, 2.0f), 0.6f, earth_material));
-    */
-    //AddBookOneScene(sphere_list);
-
-    std::vector<hittable_quad> quad_list;
-    AddCornellBox(quad_list);
-    /*material red_mat = Material(Vec3(1.0f, 0.15f, 0.15f), MaterialType_Lambertian);
-    material green_mat = Material(Vec3(0.2f, 0.95f, 0.15f), MaterialType_Lambertian);
-    material blue_mat  = Material(Vec3(0.1f, 0.25f, 1.0f), MaterialType_Lambertian);
-    material orange_mat = Material(Vec3(1.0f, 0.55f, 0.02f), MaterialType_Lambertian);
-    material teal_mat = Material(Vec3(0.18f, 0.76f, 0.78f), MaterialType_Lambertian);
-
-    quad_list.push_back(HittableQuad(Vec3(-3, -2, 5), Vec3(0, 0, -4), Vec3(0, 4, 0), red_mat));
-    quad_list.push_back(HittableQuad(Vec3(-2, -2, 0), Vec3(4, 0, 0), Vec3(0, 4, 0), green_mat));
-    quad_list.push_back(HittableQuad(Vec3(3, -2, 1), Vec3(0, 0, 4), Vec3(0, 4, 0), blue_mat));
-    quad_list.push_back(HittableQuad(Vec3(-2, 3, 1), Vec3(4, 0, 0), Vec3(0, 0, 4), orange_mat));
-    quad_list.push_back(HittableQuad(Vec3(-2, -3, 5), Vec3(4, 0, 0), Vec3(0, 0, -4), teal_mat));
-
-    material diffuse_mat = MaterialDiffuseLight(COLOR_WHITE, Vec3(4.0f));
-    quad_list.push_back(HittableQuad(Vec3(3, 1, -2), Vec3(2, 0, 0), Vec3(0, 2, 0), diffuse_mat));
-
-    material gray_ground_mat = Material(Vec3(0.5f), MaterialType_Lambertian);
-    quad_list.push_back(HittableQuad(Vec3(-10, 1.0f, 10), Vec3(100, 0, 0), Vec3(0, 0, -100), gray_ground_mat));
-    */
-
     output << "P6\n";
     output << std::to_string(image_width) << " " << std::to_string(image_height) << "\n";
     output << "255\n";
@@ -1295,7 +1432,7 @@ int main(void)
                 }
                 f32 ray_time = RandomFloat();
                 ray3 ray = Ray3(ray_origin, Normalize(pixel_sample - ray_origin), ray_time);
-                pixel_color = pixel_color + GetRayColor(ray, quad_list, max_ray_recursion_depth);
+                pixel_color = pixel_color + CalculateRayColor(scene_root, ray, max_ray_recursion_depth);
             }
             pixel_color = pixel_color * pixel_samples_scale;
             u8 r = (u8)(Clamp(LinearToGamma(pixel_color.x), INTERVAL_INTENSITY) * 255);
